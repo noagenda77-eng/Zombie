@@ -186,6 +186,89 @@ class GameMap {
 }
 
 // =====================
+// Texture Generator
+// =====================
+class TextureGenerator {
+  constructor() {
+    this.wall = this.makeWallTexture();
+    this.floor = this.makeFloorTexture();
+    this.ceiling = this.makeCeilingTexture();
+  }
+  makeWallTexture() {
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, size, size);
+    gradient.addColorStop(0, '#3b4049');
+    gradient.addColorStop(1, '#1a1f27');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 2;
+    for (let y = 0; y < size; y += 16) {
+      ctx.beginPath();
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(size, y + 0.5);
+      ctx.stroke();
+    }
+    for (let x = 0; x < size; x += 32) {
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, size);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    for (let i = 0; i < 200; i += 1) {
+      ctx.fillRect(Math.random() * size, Math.random() * size, 2, 2);
+    }
+    return canvas;
+  }
+  makeFloorTexture() {
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#1a1d22';
+    ctx.fillRect(0, 0, size, size);
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    for (let x = 0; x < size; x += 16) {
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, size);
+      ctx.stroke();
+    }
+    for (let y = 0; y < size; y += 16) {
+      ctx.beginPath();
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(size, y + 0.5);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    for (let i = 0; i < 220; i += 1) {
+      ctx.fillRect(Math.random() * size, Math.random() * size, 1, 1);
+    }
+    return canvas;
+  }
+  makeCeilingTexture() {
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#11151b';
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    for (let i = 0; i < 150; i += 1) {
+      ctx.fillRect(Math.random() * size, Math.random() * size, 2, 2);
+    }
+    return canvas;
+  }
+}
+
+// =====================
 // Raycaster Renderer
 // =====================
 class RaycasterRenderer {
@@ -195,72 +278,234 @@ class RaycasterRenderer {
     this.map = map;
     this.width = canvas.width;
     this.height = canvas.height;
+    this.textures = new TextureGenerator();
   }
   resize() {
     this.width = this.canvas.width;
     this.height = this.canvas.height;
   }
+  castRay(player, rayDirX, rayDirY) {
+    let mapX = Math.floor(player.x);
+    let mapY = Math.floor(player.y);
+    const deltaDistX = Math.abs(1 / rayDirX);
+    const deltaDistY = Math.abs(1 / rayDirY);
+    let stepX;
+    let stepY;
+    let sideDistX;
+    let sideDistY;
+    if (rayDirX < 0) {
+      stepX = -1;
+      sideDistX = (player.x - mapX) * deltaDistX;
+    } else {
+      stepX = 1;
+      sideDistX = (mapX + 1.0 - player.x) * deltaDistX;
+    }
+    if (rayDirY < 0) {
+      stepY = -1;
+      sideDistY = (player.y - mapY) * deltaDistY;
+    } else {
+      stepY = 1;
+      sideDistY = (mapY + 1.0 - player.y) * deltaDistY;
+    }
+    let side = 0;
+    while (!this.map.isWall(mapX, mapY)) {
+      if (sideDistX < sideDistY) {
+        sideDistX += deltaDistX;
+        mapX += stepX;
+        side = 0;
+      } else {
+        sideDistY += deltaDistY;
+        mapY += stepY;
+        side = 1;
+      }
+      if (Math.abs(mapX - player.x) > CONFIG.maxDepth || Math.abs(mapY - player.y) > CONFIG.maxDepth) {
+        break;
+      }
+    }
+    const perpWallDist = side === 0
+      ? (mapX - player.x + (1 - stepX) / 2) / rayDirX
+      : (mapY - player.y + (1 - stepY) / 2) / rayDirY;
+    const hitX = player.x + rayDirX * perpWallDist;
+    const hitY = player.y + rayDirY * perpWallDist;
+    return { dist: perpWallDist, hitX, hitY, side, mapX, mapY };
+  }
   render(player, zombies, grenades, hitFlash) {
     const { ctx, width, height } = this;
     ctx.clearRect(0, 0, width, height);
     const halfH = height / 2;
-    ctx.fillStyle = '#1b1b1b';
+    const fov = player.isADS ? CONFIG.adsFov : CONFIG.fov;
+
+    const skyGradient = ctx.createLinearGradient(0, 0, 0, halfH);
+    skyGradient.addColorStop(0, '#1e2a38');
+    skyGradient.addColorStop(1, '#0b1016');
+    ctx.fillStyle = skyGradient;
     ctx.fillRect(0, 0, width, halfH);
-    ctx.fillStyle = '#0f0f0f';
+
+    const floorGradient = ctx.createLinearGradient(0, halfH, 0, height);
+    floorGradient.addColorStop(0, '#12161c');
+    floorGradient.addColorStop(1, '#060708');
+    ctx.fillStyle = floorGradient;
     ctx.fillRect(0, halfH, width, halfH);
 
-    const rays = CONFIG.rayCount;
-    const fov = player.isADS ? CONFIG.adsFov : CONFIG.fov;
-    for (let i = 0; i < rays; i += 1) {
-      const rayAngle = (player.yaw - fov / 2) + (i / rays) * fov;
-      let dist = 0;
-      let hit = false;
-      let hitX = 0;
-      let hitY = 0;
-      while (!hit && dist < CONFIG.maxDepth) {
-        dist += 0.02;
-        hitX = player.x + Math.cos(rayAngle) * dist;
-        hitY = player.y + Math.sin(rayAngle) * dist;
-        if (this.map.isWall(hitX, hitY)) hit = true;
+    const leftRayX = Math.cos(player.yaw - fov / 2);
+    const leftRayY = Math.sin(player.yaw - fov / 2);
+    const rightRayX = Math.cos(player.yaw + fov / 2);
+    const rightRayY = Math.sin(player.yaw + fov / 2);
+
+    for (let y = halfH; y < height; y += 2) {
+      const p = y - halfH;
+      const rowDistance = (height / 2) / (p + 0.0001);
+      const stepX = rowDistance * (rightRayX - leftRayX) / width;
+      const stepY = rowDistance * (rightRayY - leftRayY) / width;
+      let floorX = player.x + rowDistance * leftRayX;
+      let floorY = player.y + rowDistance * leftRayY;
+      for (let x = 0; x < width; x += 2) {
+        const texX = Math.floor((floorX * 32) % this.textures.floor.width);
+        const texY = Math.floor((floorY * 32) % this.textures.floor.height);
+        ctx.drawImage(this.textures.floor, texX, texY, 2, 2, x, y + player.bobOffset, 2, 2);
+        floorX += stepX * 2;
+        floorY += stepY * 2;
       }
-      const corrected = dist * Math.cos(rayAngle - player.yaw);
-      const wallHeight = Math.min(height, (height / corrected) * 1.2);
-      const shade = Math.max(0, 200 - corrected * 25);
-      ctx.fillStyle = `rgb(${shade}, ${shade}, ${shade})`;
+    }
+
+    const rays = CONFIG.rayCount;
+    for (let i = 0; i < rays; i += 1) {
+      const cameraX = 2 * i / rays - 1;
+      const rayAngle = player.yaw + Math.atan(cameraX * Math.tan(fov / 2));
+      const rayDirX = Math.cos(rayAngle);
+      const rayDirY = Math.sin(rayAngle);
+      const hit = this.castRay(player, rayDirX, rayDirY);
+      const corrected = hit.dist * Math.cos(rayAngle - player.yaw);
+      const wallHeight = Math.min(height, (height / corrected) * 1.1);
       const x = Math.floor((i / rays) * width);
       const w = Math.ceil(width / rays);
+      let texX = hit.side === 0 ? hit.hitY - Math.floor(hit.hitY) : hit.hitX - Math.floor(hit.hitX);
+      if (hit.side === 0 && rayDirX > 0) texX = 1 - texX;
+      if (hit.side === 1 && rayDirY < 0) texX = 1 - texX;
+      const tex = this.textures.wall;
+      const texColumn = Math.floor(texX * tex.width);
+      const shade = Utils.clamp(1 - corrected / CONFIG.maxDepth, 0.2, 1);
+      ctx.drawImage(
+        tex,
+        texColumn,
+        0,
+        1,
+        tex.height,
+        x,
+        halfH - wallHeight / 2 + player.bobOffset,
+        w,
+        wallHeight
+      );
+      ctx.fillStyle = `rgba(0,0,0,${1 - shade})`;
       ctx.fillRect(x, halfH - wallHeight / 2 + player.bobOffset, w, wallHeight);
+      if (hit.side === 1) {
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(x, halfH - wallHeight / 2 + player.bobOffset, w, wallHeight);
+      }
     }
 
     const sprites = zombies.map((z) => ({
       x: z.x,
       y: z.y,
       dist: Utils.dist(player.x, player.y, z.x, z.y),
-      color: z.hitFlash ? '#ff5555' : '#77ff77',
+      hit: z.hitFlash > 0,
+      type: 'zombie',
     }));
     for (const grenade of grenades) {
       sprites.push({
         x: grenade.x,
         y: grenade.y,
         dist: Utils.dist(player.x, player.y, grenade.x, grenade.y),
-        color: '#ffaa33',
+        type: 'grenade',
       });
     }
     sprites.sort((a, b) => b.dist - a.dist);
 
     for (const sprite of sprites) {
       const angle = Math.atan2(sprite.y - player.y, sprite.x - player.x) - player.yaw;
-      const fov = player.isADS ? CONFIG.adsFov : CONFIG.fov;
-      if (Math.abs(angle) > fov / 1.5) continue;
-      const size = Math.min(200, (height / sprite.dist) * 1.2);
+      if (Math.abs(angle) > fov / 1.3) continue;
+      const size = Math.min(260, (height / sprite.dist) * 1.3);
       const sx = (0.5 + angle / fov) * width;
-      ctx.fillStyle = sprite.color;
-      ctx.fillRect(sx - size / 4, halfH - size / 2 + player.bobOffset, size / 2, size);
+      ctx.save();
+      ctx.translate(sx, halfH + player.bobOffset);
+      if (sprite.type === 'grenade') {
+        ctx.fillStyle = '#ffb347';
+        ctx.beginPath();
+        ctx.arc(0, size * 0.1, size * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        const bodyColor = sprite.hit ? '#ff6060' : '#84ff9b';
+        ctx.fillStyle = bodyColor;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, size * 0.2, size * 0.32, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#2a2a2a';
+        ctx.beginPath();
+        ctx.arc(0, -size * 0.28, size * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.18, size * 0.1);
+        ctx.lineTo(-size * 0.32, size * 0.22);
+        ctx.moveTo(size * 0.18, size * 0.1);
+        ctx.lineTo(size * 0.32, size * 0.22);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
 
+    const vignette = ctx.createRadialGradient(
+      width / 2,
+      height / 2,
+      height * 0.2,
+      width / 2,
+      height / 2,
+      height * 0.6
+    );
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, width, height);
+
     if (hitFlash > 0) {
-      ctx.fillStyle = `rgba(255,0,0,${hitFlash})`;
+      ctx.fillStyle = `rgba(255,50,50,${hitFlash})`;
       ctx.fillRect(0, 0, width, height);
+    }
+  }
+  renderWeapon(player) {
+    const { ctx, width, height } = this;
+    const weapon = player.weapon;
+    const sway = Math.sin(player.bobTime) * 6;
+    const recoil = player.recoilOffset;
+    const baseX = width * 0.62 + sway;
+    const baseY = height * 0.68 + recoil;
+
+    ctx.save();
+    ctx.translate(baseX, baseY);
+    const bodyGradient = ctx.createLinearGradient(0, 0, 160, 60);
+    bodyGradient.addColorStop(0, '#3a3f48');
+    bodyGradient.addColorStop(1, '#1b1e24');
+    ctx.fillStyle = bodyGradient;
+    ctx.fillRect(-30, 20, 170, 50);
+
+    ctx.fillStyle = '#2a2d33';
+    ctx.fillRect(80, 10, 100, 20);
+    ctx.fillRect(120, -10, 40, 20);
+
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(-10, 60, 40, 35);
+
+    ctx.fillStyle = '#b4c7ff';
+    ctx.fillRect(140, 5, 12, 8);
+
+    ctx.restore();
+
+    if (player.muzzleFlash > 0) {
+      ctx.fillStyle = `rgba(255,220,120,${player.muzzleFlash})`;
+      ctx.beginPath();
+      ctx.arc(width * 0.73, height * 0.62 + recoil, 30, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 }
@@ -425,6 +670,8 @@ class Player {
     this.isADS = false;
     this.bobTime = 0;
     this.bobOffset = 0;
+    this.recoilOffset = 0;
+    this.muzzleFlash = 0;
     this.map = map;
   }
   update(dt, input) {
@@ -461,6 +708,8 @@ class Player {
     }
 
     this.weapon.update(dt);
+    this.recoilOffset = Utils.lerp(this.recoilOffset, 0, dt * 10);
+    if (this.muzzleFlash > 0) this.muzzleFlash = Math.max(0, this.muzzleFlash - dt * 6);
   }
   tryMove(vx, vy) {
     const nx = this.x + vx;
@@ -713,6 +962,8 @@ class Game {
     const weapon = this.player.weapon;
     if (!weapon.shoot()) return;
     this.audio.shoot();
+    this.player.recoilOffset = -12;
+    this.player.muzzleFlash = 1;
     const hits = this.fireRay(weapon);
     if (hits > 0) {
       this.hitmarkerTimer = CONFIG.hitmarkerDuration;
@@ -774,6 +1025,7 @@ class Game {
   }
   render() {
     this.renderer.render(this.player, this.zombies, this.grenades, this.damageFlash);
+    this.renderer.renderWeapon(this.player);
     const prompt = this.shop.getPrompt(this.player);
     this.ui.update(this.player, this.waveManager, prompt ? prompt.text : '', this.hitmarkerTimer > 0);
     this.renderMinimap();
