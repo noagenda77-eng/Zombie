@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zombie Survival FPS</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="ui">
+    <div id="hud">
+      <div class="stat"><span>Health</span><div class="bar" id="healthBar"><div class="fill"></div></div></div>
+      <div class="stat"><span>Stamina</span><div class="bar" id="staminaBar"><div class="fill"></div></div></div>
+      <div class="stat">Ammo: <span id="ammoText">0/0</span></div>
+      <div class="stat">Grenades: <span id="grenadeText">0</span></div>
+      <div class="stat">Wave: <span id="waveText">1</span></div>
+      <div class="stat">Points: <span id="pointsText">0</span></div>
+    </div>
+    <div id="prompt"></div>
+    <div id="banner"></div>
+    <div id="pause">Paused - Press Esc</div>
+    <div id="crosshair"></div>
+    <canvas id="minimap" width="160" height="160"></canvas>
+  </div>
+  <canvas id="game"></canvas>
+  <script src="game.js"></script>
+</body>
+</html>
